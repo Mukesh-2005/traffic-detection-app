@@ -4,22 +4,21 @@ import cv2
 import tempfile
 from pathlib import Path
 
-
 # Page config
 st.set_page_config(page_title="Traffic Detection & Analysis", layout="wide")
 
-st.title("🚗 Traffic Vehicle Detection & NLP Insights")
-st.write("Upload a video or image to detect vehicles and generate traffic insights.")
+st.title("🚗 Traffic Vehicle Detection & Analysis")
+st.write("Upload a video or image to detect vehicles and get traffic insights.")
 
 # Load model
 @st.cache_resource
 def load_model():
-    return YOLO("best.pt")  # Your trained model
+    return YOLO("best.pt")
 
 model = load_model()
 
-# Class names
-class_names = {0: 'car', 1: 'bus', 2: 'truck', 3: 'motorcycle', 4: 'auto_rickshaw'}
+# Get class names from model (handles any number of classes)
+class_names = model.names
 
 # Streamlit UI
 uploaded_file = st.file_uploader("Upload video or image", type=['mp4', 'avi', 'jpg', 'png'])
@@ -45,14 +44,14 @@ if uploaded_file:
         # Display image
         for result in results:
             im_array = result.plot()
-            st.image(im_array, caption="Detection Result", use_column_width=True)
+            st.image(im_array, caption="Detection Result", width=700)
             
             # Count detections
             detections = result.boxes
             class_counts = {}
             for box in detections:
                 class_id = int(box.cls[0])
-                class_name = class_names[class_id]
+                class_name = class_names.get(class_id, f"Unknown_{class_id}")
                 class_counts[class_name] = class_counts.get(class_name, 0) + 1
             
             # Display metrics
@@ -70,26 +69,27 @@ if uploaded_file:
             for class_name, count in sorted(class_counts.items()):
                 st.write(f"  • {class_name.capitalize()}: {count}")
             
-            # Generate NLP insight
-            st.subheader("AI-Generated Insights")
+            # Generate simple insight
+            st.subheader("Traffic Insights")
             
-            insight_text = f"""
-            Detected {len(detections)} vehicles.
-            Breakdown: {', '.join([f'{count} {name}' for name, count in class_counts.items()])}.
-            Traffic density: {'Low' if len(detections) < 5 else 'Moderate' if len(detections) < 15 else 'High'}.
-            """
+            total = len(detections)
+            if total == 0:
+                insight = "No vehicles detected in image."
+            elif total < 5:
+                insight = f"Light traffic: {total} vehicles detected. Road is clear."
+            elif total < 15:
+                insight = f"Moderate traffic: {total} vehicles detected. Normal flow."
+            else:
+                insight = f"Heavy traffic: {total} vehicles detected. High congestion."
             
-            st.info(insight_text)
+            st.info(insight)
     
     elif file_type in ['.mp4', '.avi']:
         # Video detection
         st.subheader("Processing Video...")
         
-        # Show progress
-        progress_bar = st.progress(0)
-        
         # Run inference on video
-        results = model.predict(source=temp_path, conf=0.5, save=True)
+        results = model.predict(source=temp_path, conf=0.5)
         
         # Video info
         cap = cv2.VideoCapture(temp_path)
@@ -106,7 +106,7 @@ if uploaded_file:
             total_detections += len(result.boxes)
             for box in result.boxes:
                 class_id = int(box.cls[0])
-                class_name = class_names[class_id]
+                class_name = class_names.get(class_id, f"Unknown_{class_id}")
                 class_counts[class_name] = class_counts.get(class_name, 0) + 1
         
         # Display metrics
@@ -123,21 +123,22 @@ if uploaded_file:
         # Display class breakdown
         st.subheader("Vehicle Distribution")
         for class_name, count in sorted(class_counts.items()):
-            st.write(f"  • {class_name.capitalize()}: {count} ({round(count/total_detections*100, 1)}%)")
+            pct = round(count/total_detections*100, 1) if total_detections > 0 else 0
+            st.write(f"  • {class_name.capitalize()}: {count} ({pct}%)")
         
-        # Generate NLP insight
-        st.subheader("AI-Generated Insights")
+        # Generate simple insight
+        st.subheader("Traffic Insights")
         
-        insight_text = f"""
-        Video Analysis Summary:
-        - Total vehicles detected: {total_detections} across {total_frames} frames
-        - Average detection rate: {round(total_detections/total_frames, 2)} per frame
-        - Vehicle distribution: {', '.join([f'{count} {name}' for name, count in class_counts.items()])}
-        - Busiest class: {max(class_counts, key=class_counts.get) if class_counts else 'None'}
-        - Traffic density: {'Low' if total_detections < 100 else 'Moderate' if total_detections < 300 else 'High'}
-        """
+        if total_detections == 0:
+            insight = "No vehicles detected in video."
+        elif total_detections < 50:
+            insight = f"Light traffic: {total_detections} vehicles in {total_frames} frames. Smooth flow."
+        elif total_detections < 200:
+            insight = f"Moderate traffic: {total_detections} vehicles in {total_frames} frames. Normal congestion."
+        else:
+            insight = f"Heavy traffic: {total_detections} vehicles in {total_frames} frames. High congestion alert!"
         
-        st.info(insight_text)
+        st.info(insight)
     
     # Cleanup
     Path(temp_path).unlink()
@@ -147,9 +148,10 @@ st.sidebar.header("About")
 st.sidebar.write("""
 This app uses YOLOv8s to detect vehicles in real-time.
 
-**Classes:** Car, Bus, Truck, Motorcycle, Auto-rickshaw
+**Classes:** Auto-detected from model
 
-**Model:** Trained on balanced Indian traffic dataset (mAP50: 0.749)
+**Model:** Trained on balanced Indian traffic dataset
+**mAP50:** 0.749
 
 **Source:** [GitHub](https://github.com/Mukesh-2005/traffic-vehicle-detection)
 """)
