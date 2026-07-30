@@ -3,7 +3,7 @@ from ultralytics import YOLO
 import cv2
 import tempfile
 from pathlib import Path
-import anthropic
+
 
 # Page config
 st.set_page_config(page_title="Traffic Detection & Analysis", layout="wide")
